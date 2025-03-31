@@ -1,0 +1,143 @@
+print('.dP"Y8 88 8888P 88 ')
+print('Ybo." 88   dP  88 ')
+print('o.Y8b 88  dP   88')
+print("8bodP' 88 d8888 88 ")
+print("- Loaded as @" .. game.Players.LocalPlayer.Name)
+
+local Lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/laagginq/ui-libraries/main/coastified/src.lua"))()
+local Window = Lib:Window("Sizi", "Client", Enum.KeyCode.RightShift)
+local Aimbot = Window:Tab("Aimbot")
+local Visuals = Window:Tab("Visuals")
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = game:GetService("Workspace").CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+local FovCircle = Drawing.new("Circle")
+FovCircle.Visible = false
+FovCircle.Color = Color3.fromRGB(255, 255, 255)
+FovCircle.Thickness = 1.5
+FovCircle.Filled = false
+FovCircle.Transparency = 1
+
+local AimbotEnabled = false
+local AimbotFovState = false
+local AimbotFov = 75
+local LockedTarget = nil
+local AimbotPart = "Head"
+local WallCheckEnabled = false
+local AimbotSmoothness = 4
+local TeamCheckEnabled = false
+
+local VisualSnaplines = false
+local Snapline = Drawing.new("Line")
+Snapline.Visible = false
+Snapline.Color = Color3.fromRGB(255, 255, 255)
+Snapline.Thickness = 1.5
+
+Aimbot:Toggle('Aimbot',function(state)
+    AimbotEnabled = state
+    print("[Sizi Debug] Set aim state to " .. tostring(state))
+end)
+Aimbot:Slider('Smoothness',0,6,4,function(Value)
+    AimbotSmoothness = Value
+    print("[Sizi Debug] Set smoothness to " .. tostring(Value))
+end)
+Aimbot:Toggle('Visualize FOV',function(state)
+    AimbotFovState = state
+    print("[Sizi Debug] Set aimbot fov visualization state to " .. tostring(state))
+end)
+Aimbot:Toggle('Wall Check',function(state)
+    WallCheckEnabled = state
+    print("[Sizi Debug] Set wallcheck state to " .. tostring(state))
+end)
+Aimbot:Toggle('Team Check',function(state)
+    TeamCheckEnabled = state
+    print("[Sizi Debug] Set teamcheck state to " .. tostring(state))
+end)
+Aimbot:Slider('Fov Size',20,200,75,function(Value)
+    AimbotFov = Value
+    print("[Sizi Debug] Set aimbot fov to " .. tostring(Value))
+end)
+Aimbot:Dropdown("Aimbot Part",{'Head',"UpperTorso","HumanoidRootPart","LowerTorso"}, function(objective)
+    AimbotPart = objective
+end)
+
+Visuals:Toggle('Snaplines',function(state)
+    VisualSnaplines = state
+    print("[Sizi Debug] Set snaplines state to " .. tostring(state))
+end)
+
+local function IsVisible(targetPart)
+    if not WallCheckEnabled then return true end
+    local origin = Camera.CFrame.Position
+    local destination = targetPart.Position
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    local result = workspace:Raycast(origin, (destination - origin).Unit * (destination - origin).Magnitude, raycastParams)
+    return result == nil
+end
+
+local function IsEnemy(player)
+    if not TeamCheckEnabled then return true end
+    return player.Team ~= LocalPlayer.Team
+end
+local function GetClosestPlayer()
+    local closestPlayer, shortestDistance = nil, AimbotFov
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(AimbotPart) and IsEnemy(player) then
+            local part = player.Character[AimbotPart]
+            local partPosition, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if onScreen and IsVisible(part) then
+                local mousePosition = UserInputService:GetMouseLocation()
+                local distance = (Vector2.new(partPosition.X, partPosition.Y) - mousePosition).Magnitude
+                
+                if distance < shortestDistance then
+                    closestPlayer = player
+                    shortestDistance = distance
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+RunService.Heartbeat:Connect(function()
+    local mousePosition = UserInputService:GetMouseLocation()
+    FovCircle.Position = mousePosition
+    FovCircle.Radius = AimbotFov
+    FovCircle.Visible = AimbotFovState
+    
+    if AimbotEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        if not LockedTarget or not LockedTarget.Character or not LockedTarget.Character:FindFirstChild(AimbotPart) or not IsVisible(LockedTarget.Character[AimbotPart]) or not IsEnemy(LockedTarget) then
+            LockedTarget = GetClosestPlayer()
+        end
+        
+        if LockedTarget and LockedTarget.Character and LockedTarget.Character:FindFirstChild(AimbotPart) then
+            local part = LockedTarget.Character[AimbotPart]
+            local partPosition, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if onScreen and IsVisible(part) then
+                mousemoverel((partPosition.X - mousePosition.X) / 5, (partPosition.Y - mousePosition.Y) / 5)
+                
+                if VisualSnaplines then
+                    Snapline.From = mousePosition
+                    Snapline.To = Vector2.new(partPosition.X, partPosition.Y)
+                    Snapline.Visible = true
+                else
+                    Snapline.Visible = false
+                end
+            else
+                LockedTarget = nil
+                Snapline.Visible = false
+            end
+        else
+            LockedTarget = nil
+            Snapline.Visible = false
+        end
+    else
+        LockedTarget = nil
+        Snapline.Visible = false
+    end
+end)
